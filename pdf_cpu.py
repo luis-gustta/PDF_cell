@@ -99,19 +99,20 @@ class Tissue(object):
         # self.lattice = np.copy(aux)
 
     def symmetry_break(self):
-        n = 0
+        #n = 0
         for i in range(0, self.n_theta):
             for j in range(0, self.n_pol):
                 if j == 0:
-                    n += 1
-                    if n == int(1 / self.c):
+                    n = np.random.randint(int(1/self.c))
+                    #n += 1
+                    if n == 0:
                         j_new = np.random.randint(0, self.n_pol)
                         i_new = np.random.randint(0, self.n_theta)
                         self.lattice[:, :, i, j] = self.lattice[:, :, i_new, j_new]
-                        n = 0
+                        #n = 0
                     else:
                         pass
-
+    
     def diffusion_theta(self):
         # ini_grid = create_grid(self.n_y, self.n_x, self.n_pol, self.n_theta)
         D = self.D_theta
