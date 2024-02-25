@@ -10,7 +10,7 @@ import scipy as sp
 # from numba import njit
 
 
-def create_grid(n_y, n_x, n_pol, n_theta):
+def create_grid(n_y, n_x, n_theta, n_pol):
     return np.zeros([n_y, n_x, n_pol, n_theta])
 
 
@@ -25,19 +25,30 @@ def wrap(val, max_val):
     return round(val - max_val * math.floor(val / max_val))
 
 
+def central_pulse(arr, d, p, theta, prob=1):
+    n_x = len(arr[0, :, 0, 0])
+    n_y = len(arr[:, 0, 0, 0])
+    if d % 2 == 0:
+        d += 1
+    index_arr = np.arange(-(d // 2), (d // 2) + 1)
+    for i in index_arr:
+        for j in index_arr:
+            arr[int(n_y / 2.) + i, int(n_x / 2.) + j, int(theta), int(p)] = prob/(d**2)
+    return arr
+
+
 class Tissue(object):
     def __init__(self, ini_grid):
         self.real_lattice = ini_grid
-        self.n_theta = len(self.real_lattice[0, 0, 0, :])
-        self.n_pol = len(self.real_lattice[0, 0, :, 0])
+        self.n_pol = len(self.real_lattice[0, 0, 0, :])
+        self.n_theta = len(self.real_lattice[0, 0, :, 0])
         self.n_x = len(self.real_lattice[0, :, 0, 0])
         self.n_y = len(self.real_lattice[:, 0, 0, 0])
         self.lattice = np.zeros([self.n_y, self.n_x, self.n_theta, self.n_pol])
 
-        self.p_max = 0.0  #
-
-        self.c = 0  #
+        self.c = 1  #
         self.c_d = 0.0  #
+        self.g = np.var(np.arange(0, int(1/self.c), 1))
 
         self.kappa = 0.0
         self.gamma = 0.0
@@ -46,8 +57,48 @@ class Tissue(object):
         self.D_perp_dir = 0.0
         self.D = 0.0
 
+        self.p_max = 0.0  #
+        self.p_mean = np.sqrt(self.g/(2*self.gamma)) ## sqrt(v_mean^2)
+
         self.max_x = (1. / (np.sqrt(2))) * self.n_x
         self.max_y = (1. / (np.sqrt(2))) * self.n_y
+
+        self.is_drift = False
+        self.is_diff_para = False
+        self.is_diff_perp = False
+        self.is_diff_theta = False
+        self.is_diff_perc = False
+        self.is_pol_dyn = False
+        self.is_sym_break = False
+        self.is_collision = False
+
+    def __str__(self):
+        return (f'n_x: {self.n_x}\n'
+                f'n_y: {self.n_y}\n'
+                f'n_pol: {self.n_pol}\n'
+                f'n_theta: {self.n_theta}\n'
+                '\n'
+                f'p_max: {self.p_max}\n'
+                f'p_mean: {self.p_mean}\n'
+                '\n'
+                f'c: {self.c}\n'
+                f'c_d: {self.c_d}\n'
+                '\n'
+                f'kappa: {self.kappa}\n'
+                f'gamma: {self.gamma}\n'
+                f'D_theta: {self.D_theta}\n'
+                f'D_para_dir: {self.D_para_dir}\n'
+                f'D_perp_dir: {self.D_perp_dir}\n'
+                f'D: {self.D}\n'
+                '\n'
+                f'drift: {self.is_drift}\n'
+                f'diff_para: {self.is_diff_perp}\n'
+                f'diff_perp: {self.is_diff_para}\n'
+                f'diff_theta: {self.is_diff_theta}\n'
+                f'diff_perc: {self.is_diff_perc}\n'
+                f'pol_dyn: {self.is_pol_dyn}\n'
+                f'sym_break: {self.is_sym_break}\n'
+                f'collision: {self.is_collision}')
 
     def diffusion_para_dir(self):
         D = self.D_para_dir
@@ -61,6 +112,7 @@ class Tissue(object):
                 aux[:, :, i, j] = self.lattice[:, :, i, j] + D * sp.signal.convolve2d(self.lattice[:, :, i, j], kernel,
                                                                                       mode="same", boundary="wrap")
         self.lattice = np.copy(aux)
+        self.is_diff_para = True
 
     def diffusion_perp_dir(self):
         D = self.D_perp_dir
@@ -75,19 +127,25 @@ class Tissue(object):
                 aux[:, :, i, j] = self.lattice[:, :, i, j] + D * sp.signal.convolve2d(self.lattice[:, :, i, j], kernel,
                                                                                       mode="same", boundary="wrap")
         self.lattice = np.copy(aux)
+        self.is_diff_perp = True
 
-    def drift_para_dir(self):
+    def drift_para_dir(self, ax=1):
         # ROLL METHOD (Uses numpy function roll to convect the pulse in a forwards direction)
         for i in range(0, self.n_theta):
             for j in range(0, self.n_pol):
-                j_aux = ((1 - self.gamma) ** (self.n_pol - (j + 1)) * self.p_max)
-                # print(j_aux, int(j_aux))
-                self.lattice[:, :, i, j] = np.roll(self.lattice[:, :, i, j], int(j_aux), axis=1)
+                p_j = ((1 - self.gamma) ** (self.n_pol - (j + 1)) * self.p_max)
+                #p_j = j
+                #print(p_j, int(p_j))
+                #if (self.real_lattice[:,:,:,:].any() == True):
+                #print(self.real_lattice[int(self.n_y/2),:,:,0])
+                if p_j < 0:
+                    p_j = 0
+                self.lattice[:, :, i, j] = np.roll(self.lattice[:, :, i, j], int(p_j), axis=int(ax))
                 # self.lattice[:,:,i,j] = np.roll(self.lattice[:,:,i,j], j+1, axis=1) Introduce velocity dynamics (
                 # dissipation, diffusion and from 0 to 1) The "j+1" term is a quick fix, the correct method should be
                 # gathering all particles with j=0 and redistributing then in all orientations equally distributed
                 # and with j=1 in all of these orientations
-
+        self.is_drift = True
         # STANDARD METHOD (Same results for both methods)
         # aux = np.zeros((self.n_y,self.n_x,self.n_theta,self.n_pol))
         # for i in range(0, self.n_theta):
@@ -101,20 +159,22 @@ class Tissue(object):
     def symmetry_break(self):
         #n = 0
         for i in range(0, self.n_theta):
+            p_mean = self.p_mean
             for j in range(0, self.n_pol):
                 if j == 0:
                     n = np.random.randint(int(1/self.c))
                     #n += 1
                     if n == 0:
-                        j_new = np.random.randint(0, self.n_pol)
-                        i_new = np.random.randint(0, self.n_theta)
-                        self.lattice[:, :, i, j] = self.lattice[:, :, i_new, j_new]
+                        #j_new = np.mean(self.lattice[:, :, i, :])
+                        #i_new = np.random.randint(0, self.n_theta)
+                        self.lattice[:, :, i, j] = self.lattice[:, :, i, int(p_mean/self.n_theta)]
                         #n = 0
                     else:
                         pass
-    
+        self.is_sym_break = True
+
     def diffusion_theta(self):
-        # ini_grid = create_grid(self.n_y, self.n_x, self.n_pol, self.n_theta)
+        # ini_grid = create_grid(self.n_y, self.n_x, self.n_theta, self.n_pol)
         D = self.D_theta
         aux = np.zeros((self.n_y, self.n_x, self.n_theta, self.n_pol))
         for j in range(0, self.n_pol):
@@ -131,6 +191,7 @@ class Tissue(object):
                 aux[:, :, i, j] = self.real_lattice[:, :, i, j] + D * diff
 
         self.real_lattice = np.copy(aux)
+        self.is_diff_theta = True
 
     def polarization_dynamics_dissipation(self):
         aux = np.zeros((self.n_y, self.n_x, self.n_theta, self.n_pol))
@@ -138,12 +199,13 @@ class Tissue(object):
             for j in range(0, self.n_pol):
                 for x in range(0, self.n_x):
                     for y in range(0, self.n_y):
-                        j_diss = int((j - 1))  # self.gamma
+                        j_diss = int(j - 1)  # self.gamma
                         if j_diss < self.n_pol:
-                            aux[y, x, i, j] = self.lattice[y, x, i, j_diss]
+                            aux[y, x, i, j] = np.copy(self.lattice[y, x, i, j_diss])
                         else:
                             aux[y, x, i, j] = self.lattice[y, x, i, j]
         self.lattice = np.copy(aux)
+        self.is_pol_dyn = True
 
     def to_real_lattice(self):
         aux = np.zeros((self.n_y, self.n_x, self.n_theta, self.n_pol))
@@ -203,22 +265,22 @@ class Tissue(object):
                             if self.real_lattice[:, x, i, j].any():
                                 for y in range(0, self.n_y):
                                     if x > self.n_x / 2. + self.max_x / 2.:
-                                        aux = self.real_lattice[y, x, i, j]
+                                        aux = np.copy(self.real_lattice[y, x, i, j])
                                         self.real_lattice[y, x, i, j] = 0.
                                         self.real_lattice[y, x - int(self.max_x), i, j] = self.real_lattice[y, x - int(
                                             self.max_x), i, j] + aux
                                     if y > self.n_x / 2. + self.max_y / 2.:
-                                        aux = self.real_lattice[y, x, i, j]
+                                        aux = np.copy(self.real_lattice[y, x, i, j])
                                         self.real_lattice[y, x, i, j] = 0.
                                         self.real_lattice[y - int(self.max_y), x, i, j] = self.real_lattice[y - int(
                                             self.max_y), x, i, j] + aux
                                     if x < self.n_x / 2. - self.max_x / 2.:
-                                        aux = self.real_lattice[y, x, i, j]
+                                        aux = np.copy(self.real_lattice[y, x, i, j])
                                         self.real_lattice[y, x, i, j] = 0.
                                         self.real_lattice[y, x + int(self.max_x), i, j] = self.real_lattice[y, x + int(
                                             self.max_x), i, j] + aux
                                     if y < self.n_x / 2. - self.max_y / 2.:
-                                        aux = self.real_lattice[y, x, i, j]
+                                        aux = np.copy(self.real_lattice[y, x, i, j])
                                         self.real_lattice[y, x, i, j] = 0.
                                         self.real_lattice[y + int(self.max_y), x, i, j] = self.real_lattice[y + int(
                                             self.max_y), x, i, j] + aux
@@ -276,6 +338,7 @@ class Tissue(object):
                                     aux[y, x, j, i] -= trans_factor
 
         self.real_lattice = np.copy(aux)
+        self.is_collision = True
 
     def percolated_diffusion(self):
         aux = np.zeros((self.n_y, self.n_x, self.n_theta, self.n_pol))
@@ -312,6 +375,7 @@ class Tissue(object):
                         # [0.,0.5*P_y_in,0.]])
                         # aux[y,x,i,j] = self.real_lattice[y,x,i,j] + sp.signal.convolve2d(self.real_lattice[:,:,i,j], kernel, mode="same", boundary="wrap")
         self.real_lattice = np.copy(aux)
+        self.is_diff_perc = True
         # aux = np.zeros((self.n_y,self.n_x,self.n_theta,self.n_pol))
 
         # The interactions must be on the real lattice right? But then how do I evolve the convection in the self
@@ -327,9 +391,9 @@ class Tissue(object):
     def test(self, time):
         for x in range(0, self.n_x):
             for y in range(0, self.n_y):
-                for j in range(0, self.n_theta):
-                    for i in range(0, self.n_pol):
-                        if self.lattice[y, x, j, i] != 0:
+                for i in range(0, self.n_theta):
+                    for j in range(0, self.n_pol):
+                        if self.lattice[y, x, i, j] != 0:
                             d_theta = j * (2. * np.pi / self.n_theta) - np.pi
 
                             y_real = y - self.n_y / 2.
@@ -340,4 +404,23 @@ class Tissue(object):
 
                             x_new = wrap(x_new, self.n_x - 1)
                             y_new = wrap(y_new, self.n_y - 1)
-                            print(self.lattice[y, x, j, i], self.real_lattice[y_new, x_new, j, i], time)
+                            print(self.lattice[y, x, i, j], self.real_lattice[y_new, x_new, i, j], time)
+
+    def msd(self):
+        sum = 0
+        for i in range(0, self.n_theta):
+            for j in range(0, self.n_pol):
+                for x in range(0, self.n_x):
+                    for y in range(0, self.n_y):
+                        sum += (x**2 + y**2)*self.real_lattice[y, x, i, j]
+        return(sum)
+
+    def theta2pol(self, theta):
+        pos_value = list(np.arange(0, 360, int(360/self.n_pol)))
+        if theta in pos_value:
+            return int(pos_value.index(theta))
+        else:
+            raise ValueError(f'Possible values are: {pos_value}')
+
+    def pol2theta(self, pol_dir):
+        return int(360/self.n_pol) * pol_dir
