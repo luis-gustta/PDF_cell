@@ -16,7 +16,7 @@ from matplotlib.animation import FuncAnimation
 #############################################################################
 
 np.set_printoptions(threshold=sys.maxsize)  # (threshold=np.inf)
-timestamp = 'sim_all'#datetime.now().strftime("%Y%m%d_%H%M%S")
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # video_name = "simu"
 os.mkdir(f'{timestamp}')
