@@ -306,13 +306,13 @@ class Tissue(object):
     def collision_real_lattice(self):
         aux = np.copy(self.real_lattice)
 
-        for y in range(0, self.n_y):
-            if self.real_lattice[y, :, :, :].any():
-                for x in range(0, self.n_x):
-                    if self.real_lattice[y, x, :, :].any():
+        for y in range(0,self.n_y):
+            if (self.real_lattice[y,:,:,:].any() == True):
+                for x in range(0,self.n_x):
+                    if (self.real_lattice[y,x,:,:].any() == True):
                         for j in range(0, self.n_theta):
-                            if self.real_lattice[y, x, j, :].any():
-                                for i in range(0, self.n_pol):
+                            if (self.real_lattice[y,x,j,:].any() == True):
+                                for l in range(0, self.n_pol):
                                     trans_factor = 0.
                                     norm_factor = 0.
 
@@ -320,46 +320,48 @@ class Tissue(object):
                                     mean_pn_y = 0.
 
                                     for m in range(0, self.n_theta):
-                                        if self.real_lattice[y, x, m, :].any():
+                                        if (self.real_lattice[y,x,m,:].any() == True):
                                             for n in range(0, self.n_pol):
-                                                if m != j or n != i:
-                                                    trans_factor += self.real_lattice[y, x, j, i] * self.real_lattice[
-                                                        y, x, m, n]
-                                                    norm_factor += self.real_lattice[y, x, m, n]
+                                                if m!=j or n!=l:
+                                                    trans_factor += self.real_lattice[y,x,j,l] * self.real_lattice[y,x,m,n]
+                                                    norm_factor += self.real_lattice[y,x,m,n]
 
-                                                    p_n = n  # * self.kappa
-                                                    theta_m = m * (2. * np.pi / self.n_theta)
-                                                    mean_pn_x += self.real_lattice[y, x, m, n] * p_n * np.cos(theta_m)
-                                                    mean_pn_y += self.real_lattice[y, x, m, n] * p_n * np.sin(theta_m)
+                                                    p_n = (n) # * self.kappa
+                                                    theta_m = m*(2.*np.pi/self.n_theta)
+                                                    mean_pn_x += self.real_lattice[y,x,m,n] * p_n * np.cos(theta_m)
+                                                    mean_pn_y += self.real_lattice[y,x,m,n] * p_n * np.sin(theta_m)
 
-                                    p_l = i  # * self.kappa
+                                    p_l = l # * self.kappa
 
-                                    theta_l = i * (2. * np.pi / self.n_theta)
-                                    # theta_k = np.arctan2(mean_pn_y, mean_pn_x)  # + np.pi
+                                    theta_l = j*(2.*np.pi/self.n_theta)
+                                    theta_k = np.arctan2(mean_pn_y,mean_pn_x) #+ np.pi
 
-                                    px_new = 0.5 * (p_l * np.cos(theta_l) + mean_pn_x)
-                                    py_new = 0.5 * (p_l * np.sin(theta_l) + mean_pn_y)
+                                    px_new = 0.5 * ( p_l * np.cos(theta_l) + mean_pn_x)
+                                    py_new = 0.5 * ( p_l * np.sin(theta_l) + mean_pn_y)
 
-                                    theta_new = np.arctan2(py_new, px_new)  # + np.pi
+                                    theta_new = np.arctan2(py_new,px_new) #+ np.pi
 
-                                    p_new = np.sqrt(px_new ** 2 + py_new ** 2)
+                                    p_new = np.sqrt(px_new**2 + py_new**2)
 
-                                    j_new = wrap((int(theta_new * (self.n_theta / (2. * math.pi)))), self.n_theta - 1)
+                                    j_new = self.wrap((int(theta_new*(self.n_theta/(2.*math.pi)))),self.n_theta-1)
                                     l_new = round(p_new)
-                                    l_new = self.n_pol - 1 if l_new >= self.n_pol else l_new
+                                    l_new = self.n_pol-1 if l_new >= self.n_pol else l_new
 
                                     # if trans_factor!=0.:
-                                    # print(theta_l, theta_k, theta_new, (theta_l+theta_k)/2., trans_factor)
+                                        # print(theta_l, theta_k, theta_new, (theta_l+theta_k)/2., trans_factor)
 
-                                    aux[y, x, j_new, l_new] += trans_factor
-                                    aux[y, x, j, i] -= trans_factor
+                                    aux[y,x,j_new,l_new] += trans_factor
+                                    aux[y,x,j,l] -= trans_factor
+
+        self.real_lattice = np.copy(aux)
 
         self.real_lattice = np.copy(aux)
         self.is_collision = True
 
+
     def percolated_diffusion(self):
         aux = np.zeros((self.n_y, self.n_x, self.n_theta, self.n_pol))
-        D = self.D
+        D = 0.5  # self.D
         c_d = self.c_d
 
         for y in range(1, self.n_y - 1):
@@ -369,23 +371,23 @@ class Tissue(object):
                 for i in range(0, self.n_theta):
                     # if (self.real_lattice[y,x,i,:].any() == True):
                     for j in range(0, self.n_pol):
-                        P_x_out = D * (self.real_lattice[y, x, i, j] * (
-                                np.exp(-c_d * self.real_lattice[y, x + 1, i, j]) + np.exp(
-                                        -c_d * self.real_lattice[y, x - 1, i, j])))
-                        P_x_in = D * (np.exp(-c_d * self.real_lattice[y, x, i, j]) * (
-                                self.real_lattice[y, x + 1, i, j] + self.real_lattice[y, x - 1, i, j]))
+                        P_x_out = D * ((self.real_lattice[y, x, i, j] ** 2) * (
+                                    (1.0 - self.real_lattice[y, x + 1, i, j]) + (
+                                        1.0 - self.real_lattice[y, x - 1, i, j])))
+                        P_x_in = D * ((1.0 - self.real_lattice[y, x, i, j]) * (
+                                    self.real_lattice[y, x + 1, i, j] ** 2 + self.real_lattice[y, x - 1, i, j] ** 2))
 
-                        P_y_out = D * (self.real_lattice[y, x, i, j] * (
-                                np.exp(-c_d * self.real_lattice[y + 1, x, i, j]) + np.exp(
-                                        -c_d * self.real_lattice[y - 1, x, i, j])))
-                        P_y_in = D * (np.exp(-c_d * self.real_lattice[y, x, i, j]) * (
-                                self.real_lattice[y + 1, x, i, j] + self.real_lattice[y - 1, x, i, j]))
+                        P_y_out = D * ((self.real_lattice[y, x, i, j] ** 2) * (
+                                    (1.0 - self.real_lattice[y + 1, x, i, j]) + (
+                                        1.0 - self.real_lattice[y - 1, x, i, j])))
+                        P_y_in = D * ((1.0 - self.real_lattice[y, x, i, j]) * (
+                                    self.real_lattice[y + 1, x, i, j] ** 2 + self.real_lattice[y - 1, x, i, j] ** 2))
 
                         aux[y, x, i, j] = self.real_lattice[y, x, i, j] + P_x_in - P_x_out + P_y_in - P_y_out
 
-
         self.real_lattice = np.copy(aux)
         self.is_diff_perc = True
+
 
     def total(self):
         prob = np.sum(np.concatenate(self.real_lattice))
